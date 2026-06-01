@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "support-voice"
+version = "0.1.0"
+description = "Predictability validation harness for the Voice Support Intelligence Copilot. Blind, cross-family scoring over support-call-generator exports."
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.40.0",
+    "openai>=1.0.0",
+    "support-call-generator @ git+https://github.com/gititya/support-call-generator.git",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+
+[tool.setuptools.packages.find]
+include = ["voice_eval*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

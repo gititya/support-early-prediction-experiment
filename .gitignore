@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*serviceaccount*
+*service-account*
+*.pem
+*.p12
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+.venv/
+runs/
+*.egg-info/
+.streamlit/secrets.toml
