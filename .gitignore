@@ -15,3 +15,13 @@ __pycache__/
 runs/
 *.egg-info/
 .streamlit/secrets.toml
+
+# internal context / planning docs (kept local, not published)
+CLAUDE.md
+AGENTS.md
+PRD_1st.md
+SKILL.md
+VOICEAGENT_ARCHITECTURE_NOTE.md
+
+# stray nested clone
+real-time_support/
