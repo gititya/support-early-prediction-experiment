@@ -1,118 +1,108 @@
-# Real-Time Support — Predictability Validation Harness
+[EXPERIMENT] Real-Time Support
+==============================
 
-A blind, cross-family scorer that asks one question before any realtime infrastructure gets built:
-**are support calls predictable early enough for a speculative AI copilot to be useful?** A kill-or-go
-gate, not a product.
+I wanted to build an AI copilot that listens to a support call and starts
+solving the problem before the human agent does. Before building any of it,
+I tested the one thing the whole idea depends on: can an AI hear the first
+minute of a call and predict what's actually wrong?
 
-The answer it returned: **no.** That "no" is the deliverable.
+This repo is that test. The answer was no.
 
----
+The one finding
+---------------
 
-## The One Idea
+Support calls don't tell you what's wrong early enough to predict the fix.
 
-The pitch for a realtime support copilot is that an AI listening to the first 60–90 seconds of a call
-can predict the *specific root cause* and start solving before the human agent does. Everything
-downstream — the speculative UI, the realtime audio stack, the agent-assist layer — only matters if
-that early signal actually exists.
+I gave the AI the first 6 turns of each call (the "first 60-90 seconds") and
+asked it to name the specific root cause — not the topic, the actual mechanism
+(a SCIM sync delay, a stale entitlement cache, a missing write scope). It got
+2% right.
 
-So instead of building the stack and hoping, this harness tests the premise directly on synthetic
-B2B SaaS support calls and scores it blind. The gate:
+Give it the whole call and it gets 92% right. So the AI is fine. The
+information just isn't there early. By the time the cause is clear, the call
+is mostly over and there's nothing left to predict.
 
-> **Specific root cause** (not broad category) correctly predicted from the call's opening,
-> blind-scored, on ≥ **60%** of calls.
+That gap is the result. It killed the product before I built it.
 
-Category is not the test. The scenario type (permissions / migration / workspace setup) is obvious
-from turn 1 — predicting *that* is trivial. The bet was always on the specific operational mechanism:
-SCIM sync delay, stale entitlement cache, archived-team export filter, missing integration write
-scope. That is what an agent would need early to be worth the realtime spend.
+What I built and ran
+--------------------
 
----
+The pass bar was simple: predict the specific root cause from the opening of
+the call, blind, on at least 60% of calls. Topic doesn't count — anyone can
+tell "this is a permissions problem" from turn one. The bet was on the
+specific cause, because that's what an agent would need early for the copilot
+to be worth anything.
 
-## The Verdict
+I ran it on 48 synthetic B2B support calls and scored every prediction blind.
 
-**STOP. The realtime speculative-copilot premise is dead.**
+Result: 2%.
 
-| Metric | gpt-5.5 author (n=48) | gpt-5.4-mini author (n=51) |
-|---|---|---|
-| **Early specific root cause (THE GATE)** | **2%** | 14% (7% clean) |
-| Full-transcript accuracy | 92% | 92% |
-| Broad category accuracy | 94% | 90% |
+I checked it three ways and it held up:
 
-Three things this settles:
+1. First I ran it on calls written by a weaker model — got 14%. Then I rewrote
+   the calls with a stronger model and it dropped to 2%. The early signal was
+   just the weak model leaving tells in the script.
+2. I swept the window to find where prediction actually gets reliable. It
+   crosses 60% around turn 12-13 — well into the call, not the opening.
+3. The one bright spot (migration calls looked predictable around turn 10)
+   vanished with the stronger model: 0% early. It was never real.
 
-1. **Early predictability is a small-model artifact.** A frontier author drops the gate from 14% to
-   **2%**. The opening of a realistically-written call essentially never contains the specific cause.
-   The premise isn't below threshold — it's *absent*.
-2. **The one bright spot didn't survive.** Onboarding/migration looked predictable (~turn 10) under
-   the weaker author; on frontier-authored migration calls it's **0% early**. It was a tell baked in
-   by the weaker model, not a real signal.
-3. **The harness is sound.** Full-transcript accuracy held at 92% and category at 94% — given enough
-   of the call, the annotator and judge work fine. The 2% is genuinely missing early information.
+Why I trust the result
+-----------------------
 
-The only capability that survived (post-call / handoff record) is the *least* differentiated piece —
-post-call summaries are already commoditized — and it's unvalidated (n=12, uncalibrated judge,
-synthetic). Not worth building on this evidence.
+The easy way to fool yourself here is to let one model grade its own homework.
+So nobody plays two roles:
 
-Authoritative writeup: [`FINDINGS_phase1.md`](FINDINGS_phase1.md) §11–13.
+- GPT writes the calls (each with a hidden answer key).
+- Claude reads the call and makes the prediction — it never sees the answer.
+- GPT compares the prediction to the answer key.
 
----
+The predictor and the judge are never the same model. A boundary test enforces
+that the predictor can't read the answer key. There's also a leakage check that
+flags calls where the customer accidentally says the answer too early, so I can
+report the clean calls separately.
 
-## Why You Can Trust the "No"
+What this is not
+----------------
 
-The failure mode of self-evaluation is a model grading its own homework. This harness is built to
-prevent that with **cross-family separation**:
+1. NOT a working copilot. It's the experiment that decided I shouldn't build
+   one yet.
+2. NOT the call generator. The calls come from a separate repo
+   (gititya/support-call-generator). This repo only reads its output.
+3. NOT real calls. Everything is synthetic. That's exactly why the stronger
+   model mattered — and why I won't claim anything until I can run it on real
+   transcripts.
 
-- **GPT** authors the calls (each ships a hidden `ground_truth.json` answer key).
-- **Claude** is the **blind annotator** — sees transcript turns only, never the ground truth.
-  Enforced by a sacred export boundary + a boundary test.
-- **GPT** is the **match judge** — compares prediction vs hidden key for semantic equivalence.
-- Hard rule: the predictor and the judge are never the same model.
+How to run
+----------
 
-Plus a leakage check (the generator flags calls where the customer reveals cause-specific terms too
-early) and a clean PASS-only subset reported alongside the full set as a sensitivity check.
+    source .venv/bin/activate
+    export OPENAI_API_KEY="..."      # the judge
+    export ANTHROPIC_API_KEY="..."   # the predictor
+    python -m voice_eval run         # predict -> score -> report into runs/latest
+    pytest -q                        # boundary + scorer tests
 
----
+Config is via env vars (`VE_EARLY_TURNS`, `VE_ANNOTATOR_MODEL`,
+`VE_JUDGE_MODEL`, `VE_EXPORTS_DIR`). See `.env.example`.
 
-## What This Is NOT
+Files
+-----
 
-- Not a realtime support copilot. It's the experiment that decided one shouldn't be built (yet).
-- Not the call generator. The dataset comes from a separate dependency
-  ([`gititya/support-call-generator`](https://github.com/gititya/support-call-generator)); this repo
-  only *consumes* its exports.
-- Not trained on real calls. Everything is synthetic — which is exactly why the frontier-author
-  collapse matters, and why the survivors stay "unvalidated" until real transcripts appear.
+    voice_eval/          — loader, windows, annotator, scorer, metrics, report, cli
+    curve.py             — sweeps the window size to find where prediction works
+    escalation_probe.py  — can it predict an escalation early? (no)
+    postcall_probe.py    — the post-call summary fallback probe
+    FINDINGS_phase1.md    — the full writeup, every number and how I got it
+    tests/                — boundary test + scorer test
 
----
+Results
+-------
 
-## How to Run
+    Calls written by        | Predict from first 6 turns | Given the whole call
+    weaker model (n=51)     | 14%                        | 92%
+    stronger model (n=48)   | 2%                         | 92%
 
-```bash
-source .venv/bin/activate
-export OPENAI_API_KEY="..."      # match judge
-export ANTHROPIC_API_KEY="..."   # blind annotator
-python -m voice_eval run         # predict -> score -> report into runs/latest
-pytest -q                        # boundary + scorer tests
-```
-
-Config via env: `VE_EXPORTS_DIR`, `VE_EARLY_TURNS` (6), `VE_ANNOTATOR_MODEL`
-(`claude-sonnet-4-6`), `VE_JUDGE_MODEL` (`gpt-5.4-mini`). See `.env.example`.
-
----
-
-## Contents
-
-- `voice_eval/` — loader, windows, annotator, scorer, metrics, report, cli, llmio
-- `curve.py` — sweeps the opening-window size to find *where* prediction becomes reliable (it's
-  mid-to-late call, ~turn 12–13, not the opening)
-- `escalation_probe.py`, `postcall_probe.py`, `model_robustness.py` — the follow-on probes
-- `FINDINGS_phase1.md` — the authoritative findings record, written to be re-read with no prior context
-- `tests/` — `test_boundary` (enforces the export boundary), `test_scorer`
-
----
-
-## The Reusable Part
-
-The headline finding is specific to this premise, but the *method* generalizes: a cheap, blind,
-cross-family validation gate you run **before** building, to kill premises that won't survive contact
-with a strong adversary. For ~$10 it prevented building a realtime copilot the data says wouldn't
-work. That pattern is the lasting IP here.
+The takeaway: for ~$10 of API calls, this told me a realtime support copilot
+won't work on the thing it was supposed to be good at. The reusable part isn't
+the finding — it's the method: a cheap blind test you run before building, to
+kill an idea before it costs you months.
