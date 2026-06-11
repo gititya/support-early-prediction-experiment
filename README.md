@@ -67,11 +67,12 @@ What this is not
 
 1. NOT a working copilot. It's the experiment that decided I shouldn't build
    one yet.
-2. NOT the call generator. The calls come from a separate repo
-   (gititya/support-call-generator). This repo only reads its output.
-3. NOT real calls. Everything is synthetic. That's exactly why the stronger
-   model mattered — and why I won't claim anything until I can run it on real
-   transcripts.
+2. NOT the call generator. The calls come from a separate repo I built,
+   [support-call-generator](https://github.com/gititya/support-call-generator).
+   This repo only reads its output.
+3. NOT real calls. The generator makes synthetic calls — these are not real
+   production transcripts. That's exactly why the stronger model mattered, and
+   why I won't claim anything until I can run it on real calls.
 
 How to run
 ----------
