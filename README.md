@@ -1,22 +1,19 @@
 [EXPERIMENT] Real-Time Support Copilot
 ==============================
 
-I wanted to build an AI copilot that listens to a support call and starts
-solving the problem before the human agent does. Before building any of it,
-I tested the one thing the whole idea depends on: can an AI hear the first
-minute of a call and predict what's actually wrong?
+The product idea was an AI copilot that listens to a support call and starts solving the problem before the human agent does; a "**realtime speculative assistan**t" The entire idea rests on one assumption: that support calls reveal the _specific root cause_ early enough to act on, so instead of building the copilot, I built a cheap, blind test on that single assumption. 
 
-This repo is that test. I built the first version using the transcripts of support call, and if the results were satisfactory, move into voice. 
+This repo is that test. I built the first version using the transcripts of a support call, and if the results were positive, move into voice. 
 
-The answer was no.
+The answer was **no**.
 
 What I built and ran
 --------------------
 
 The pass bar was simple: predict the specific root cause from the opening of
-the call, blind, on at least 60% of calls. The idea wasn't to get the theme, like "this is a permissions problem" right, it was to to find the specific cause, because that's what human agent would need early for the copilot to be worth anything. 
+the call, blind, on at least **60%** of calls (or the transcripts, in this case). The idea wasn't to get the _category_ the call belongs to, it was to to find the specific cause, because that's what the human agent would need early for the copilot to be worth anything. 
 
-I ran it on 48 synthetic B2B support call transcripts and scored every prediction blind. For this, I gave the LLM the first 6 turns of each transcript (the "first 60-90 seconds") and asked it to name the specific root cause; not the topic or the theme, but the actual root cause. 
+I ran it on 48 synthetic B2B support call transcripts and scored every prediction blind. For this, I gave the LLM the first 6 turns of each transcript (the "**first 60-90 seconds**") and asked it to name the specific root cause. 
 
 Result: **2%.**
 
@@ -46,10 +43,29 @@ that the predictor can't read the answer key. There's also a leakage check that
 flags calls where the customer accidentally says the answer too early, so I can
 report the clean calls separately.
 
+
 What would probably help pivot this
 ----------------
 1. Actual (and live) product telemetry into the copilot; I don't have access to that right now.
 2. Real support calls - transcripts or voice. These are "synthetic" support call transcripts that were generated from a tool I built:  [support-call-generator](https://github.com/gititya/support-call-generator). It _could_ work with production grade support calls. 
+
+
+The harness that made this possible
+----------------
+
+| Module                   | What it is                                                                                                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loader.py`              | Resolves the generator's export dir; loads transcripts, `ground_truth`, leakage reports, manifest. Defines the 3 scenario categories.                                         |
+| `windows.py`             | The "how much of the call does the model see" abstraction. `early_window` = first N turns (the gate's 6-turn proxy); `full_window` = whole call. `render_turns` formats them. |
+| `annotator.py`           | The **blind predictor**. System prompt = "you read only an early fragment, you have NOT seen the rest, any answer key, or hidden notes." This is Claude.                      |
+| `scorer.py`              | The **judge**. Strict GPT prompt: "only call it a match if the prediction captures the same operational root cause." Compares prediction vs hidden key.                       |
+| `metrics.py`             | Aggregation + `GATE_THRESHOLD = 0.60`. Excludes leakage=FAIL calls from the gate set; computes early vs full accuracy.                                                        |
+| `report.py`              | Writes `scores.csv` + `summary.md` artifacts.                                                                                                                                 |
+| `cli.py`                 | `python -m voice_eval run` → predict → score → report into `runs/latest`.                                                                                                     |
+| `llmio.py`               | Tolerant JSON parser for model output (strips markdown fences etc.).                                                                                                          |
+| `tests/test_boundary.py` | **The integrity guarantee** — proves the predictor can't reach the answer key.                                                                                                |
+| `tests/test_scorer.py`   | Tests the judge logic.                                                                                                                                                        |
+
 
 How to run
 ----------
@@ -70,7 +86,6 @@ Files
     curve.py             — sweeps the window size to find where prediction works
     escalation_probe.py  — can it predict an escalation early? (no)
     postcall_probe.py    — the post-call summary fallback probe
-    FINDINGS_phase1.md    — the full writeup, every number and how I got it
     tests/                — boundary test + scorer test
 
 Results
