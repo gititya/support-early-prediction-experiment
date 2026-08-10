@@ -70,7 +70,7 @@ The harness that made this possible
 How to run
 ----------
 
-    source .venv/bin/activate
+    source /Users/aditya/venvs/support/bin/activate
     export OPENAI_API_KEY="..."      # the judge
     export ANTHROPIC_API_KEY="..."   # the predictor
     python -m voice_eval run         # predict -> score -> report into runs/latest
@@ -94,4 +94,3 @@ Results
     Calls written by        | Predict from first 6 turns | Given the whole call
     weaker model (n=51)     | 14%                        | 92%
     stronger model (n=48)   | 2%                         | 92%
-
