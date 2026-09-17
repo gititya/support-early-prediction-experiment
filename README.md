@@ -1,94 +1,58 @@
-[EXPERIMENT] Early prediction experiment
-========================================
+# Can the opening of a support call reveal the cause?
 
-**Support calls do not reveal the specific cause early. I got 14% on 51 calls and 2% on 48 harder ones, against a 60% bar. I killed the speculative copilot idea.**
+I wanted to test an idea: could an LLM work out the cause of a customer's problem early enough to help the support rep get ahead of the call, during the call itself?
 
-The product idea was an AI copilot that listens to a support call and starts solving the problem before the human agent does: a realtime speculative assistant. The entire idea rests on one assumption: that support calls reveal the _specific root cause_ early enough to act on. Instead of building the copilot, I built a cheap, blind test of that assumption.
+A customer saying “three people cannot get into the workspace after a migration” tells me where to begin the investigation. It does not yet tell me whether the cause is permissions, a login problem, or something that went wrong in the migration.
 
-This repo is that test. I started with transcripts; I would only have moved into voice if the result supported it.
+This experiment asked whether a model could make that more specific diagnosis from only the first six conversation turns.
 
-The answer was **no**.
+## What I built
 
-What I built and ran
---------------------
+I used fictional support conversations with a known cause for each case.
+1. One model created the conversations and their answer keys.
+2. A separate model read only the conversation text and predicted the cause; it could not see the answer key.
+3. A third model compared its prediction with the intended answer.
 
-For the first run (n=51) and the harder rerun (n=48), the pass bar was **60%**: predict the specific root cause from the opening of the call, blind. The test was not about the broad _category_ of the call. It asked for the specific cause a support person would need before an early copilot could be useful.
+I checked three things:
+1. Could it identify the **specific cause** at the beginning of the call?
+2. Could it at least identify the **broad category of problem**?
+3. Could it identify the cause after reading the **whole conversation**, once more evidence was available?
 
-I first ran it on 51 synthetic B2B support-call transcripts, then on 48 harder transcripts written by a stronger model. I scored every prediction blind. The LLM saw the first six turns of each transcript and had to name the specific root cause.
+The target for early specific diagnosis was 60% correct.
 
-Result on the harder set: **2% on 48 calls.**
+## What happened
 
-I checked it a few ways and it held up:
+| Check | First set: 51 fictional calls | Second, harder set: 48 fictional calls |
+| --- | --- | --- |
+| Specific cause from the first six turns | 7 correct — 14% | 1 correct — 2% |
+| Broad type of problem from the first six turns | 46 correct — 90% | 45 correct — 94% |
+| Specific cause from the whole conversation | 47 correct — 92% | 44 correct — 92% |
 
-1. First, I ran it on 51 transcripts written by a weaker model and got 14%. Then I used 48 transcripts written by a stronger model and it dropped to 2%. The early signal was
-   just the weak model making it obvious in the script.
-2. I swept the window to find where prediction actually gets reliable. It
-   crosses the 60% bar around turn 12–13 on the first 51 calls—well into the transcript, not the opening.
-3. Migration calls looked predictable around turn 10 in the first set. That result vanished in the harder set: 0% on 16 migration calls. It was a feature of the synthetic scripts, not a reliable signal.
-4. Given the whole transcript, it got 92% right on all 48 harder calls. The pipeline could find the cause when the evidence existed; the opening did not contain it.
+The opening usually gave the model enough to recognise the kind of problem. It rarely gave it enough to identify the actual cause, and reading the rest of the conversation changed that substantially.
 
+The two sets are shown separately because they contain different cases. Neither reached the target for early diagnosis.
 
-Why I trust the result
------------------------
+## What changed when I gave it the whole call?
 
-Used a Dual model pipeline for this: 
+This was the important comparison - when I removed the six-turn constraint and gave the model the complete conversation, it identified the intended cause in **47 of 51 cases (92%)** in the first set and **44 of 48 (92%)** in the harder set.
 
-- GPT writes the calls (each with a hidden answer key).
-- Claude reads the call and makes the prediction — it never sees the answer.
-- GPT compares the prediction to the answer key.
+So, the model could usually work out the intended cause once it had the full conversation. The early failures did not mean it was incapable of identifying those causes; its answers improved substantially with more context.
 
-The predictor and the judge are never the same model. A boundary test enforces
-that the predictor can't read the answer key. There's also a leakage check that
-flags calls where the customer accidentally says the answer too early, so I can
-report the clean calls separately.
+## The lesson
 
+**Recognising the type of problem and having enough evidence to diagnose it are two different milestones. A copilot should help a rep move from the first to the second.**
 
-What would probably help pivot this
-----------------
-1. Actual product evidence. I do not have access to it.
-2. Real support calls, as transcripts or voice. These tests use synthetic calls from a tool I built: [support-call-generator](https://github.com/gititya/support-call-generator).
+The contrast mattered: roughly 92% correct with the whole call, but only 2–14% from the opening. Asking for the diagnosis earlier did not give the rep the same answer sooner. It usually gave them a wrong answer to work around.
 
+That changed the question I wanted to test. Given what the customer has said so far, what is still unknown, and which question or check would help distinguish the possible causes? As new evidence arrives, can the system change its view instead of defending its first guess?
 
-The harness that made this possible
-----------------
+## Where this led
 
-| Module                   | What it is                                                                                                                                                                    |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `loader.py`              | Resolves the generator's export dir; loads transcripts, `ground_truth`, leakage reports, manifest. Defines the 3 scenario categories.                                         |
-| `windows.py`             | The "how much of the call does the model see" abstraction. `early_window` = first N turns (the gate's 6-turn proxy); `full_window` = whole call. `render_turns` formats them. |
-| `annotator.py`           | The **blind predictor**. System prompt = "you read only an early fragment, you have NOT seen the rest, any answer key, or hidden notes." This is Claude.                      |
-| `scorer.py`              | The **judge**. Strict GPT prompt: "only call it a match if the prediction captures the same operational root cause." Compares prediction vs hidden key.                       |
-| `metrics.py`             | Aggregation + `GATE_THRESHOLD = 0.60`. Excludes leakage=FAIL calls from the gate set; computes early vs full accuracy.                                                        |
-| `report.py`              | Writes `scores.csv` + `summary.md` artifacts.                                                                                                                                 |
-| `cli.py`                 | `python -m voice_eval run` → predict → score → report into `runs/latest`.                                                                                                     |
-| `llmio.py`               | Tolerant JSON parser for model output (strips markdown fences etc.).                                                                                                          |
-| `tests/test_boundary.py` | **The integrity guarantee** — proves the predictor can't reach the answer key.                                                                                                |
-| `tests/test_scorer.py`   | Tests the judge logic.                                                                                                                                                        |
+That is the direction of Copilot Lab: private assistance for the human rep during an investigation. It should keep track of facts, competing explanations and the evidence needed before recommending a fix or a transfer. The rep remains in control of what to ask and whether the proposed fix worked.
 
+This experiment explains the choice to pursue that direction. It does not establish that the copilot can do it well; that needs its own assessment.
 
-How to run
-----------
+## Some limitations:
 
-    export OPENAI_API_KEY="..."      # the judge
-    export ANTHROPIC_API_KEY="..."   # the predictor
-    python -m voice_eval run         # predict -> score -> report into runs/latest
-    pytest -q                        # boundary + scorer tests
-
-Config is via env vars (`VE_EARLY_TURNS`, `VE_ANNOTATOR_MODEL`,
-`VE_JUDGE_MODEL`, `VE_EXPORTS_DIR`). See `.env.example`.
-
-Files
------
-
-    voice_eval/          — loader, windows, annotator, scorer, metrics, report, cli
-    curve.py             — sweeps the window size to find where prediction works
-    escalation_probe.py  — can it predict an escalation early? (no)
-    postcall_probe.py    — the post-call summary fallback probe
-    tests/                — boundary test + scorer test
-
-Results
--------
-
-    Calls written by        | Predict from first 6 turns | Given the whole call
-    weaker model (n=51)     | 14% (n=51)                 | 92% (n=51)
-    stronger model (n=48)   | 2% (n=48)                  | 92% (n=48)
+1. These were fictional conversations, and a model judged whether predictions matched their intended causes. That makes this a controlled experiment, not a measurement of real support calls.
+2. The results do not prove that early diagnosis always fails. These diagnosis scores do not establish that a copilot can ask consistently useful questions or help a real rep resolve a case. That needs its own assessment.
