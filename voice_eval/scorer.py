@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from voice_eval.llmio import parse_json
+from voice_eval.llmio import ensure_provider_key, parse_json
 from voice_eval.loader import load_ground_truth, load_leakage
 
 JUDGE_SYSTEM = """You are a strict evaluation judge for a support-call predictability study. \
@@ -53,7 +53,7 @@ def _judge_root_cause(prediction: str, actual: str, model: str | None, use_llm: 
     if not prediction:
         return {"match": False, "reason": "empty prediction"}
     if use_llm is None:
-        use_llm = bool(os.getenv("OPENAI_API_KEY"))
+        use_llm = bool(ensure_provider_key("OPENAI_API_KEY"))
     if not use_llm:
         return _overlap_match(prediction, actual)
     prompt = f"""Hidden answer-key root cause:
@@ -71,7 +71,7 @@ def _judge_question(prediction: str, gold_questions: list[str], model: str | Non
     if not prediction:
         return {"match": False, "reason": "empty question"}
     if use_llm is None:
-        use_llm = bool(os.getenv("OPENAI_API_KEY"))
+        use_llm = bool(ensure_provider_key("OPENAI_API_KEY"))
     if not use_llm:
         joined = " ".join(gold_questions)
         return _overlap_match(prediction, joined)
@@ -93,7 +93,10 @@ def _judge_call(prompt: str, model: str | None) -> dict[str, Any]:
     except ImportError as exc:
         raise RuntimeError("Install openai with: pip install -e .") from exc
 
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    api_key = ensure_provider_key("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not set and Keychain service OpenAI:voice is missing")
+    client = OpenAI(api_key=api_key)
     response = client.responses.create(
         model=model or os.getenv("VE_JUDGE_MODEL", "gpt-5.4-mini"),
         input=[

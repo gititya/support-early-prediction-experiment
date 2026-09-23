@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from voice_eval.llmio import parse_json
+from voice_eval.llmio import ensure_provider_key, parse_json
 from voice_eval.loader import CATEGORIES
 from voice_eval.windows import render_turns
 
@@ -42,7 +42,7 @@ def annotate(
 ) -> dict[str, Any]:
     """Blind annotation of an early transcript fragment. Claude, with offline fallback."""
     if use_llm is None:
-        use_llm = bool(os.getenv("ANTHROPIC_API_KEY"))
+        use_llm = bool(ensure_provider_key("ANTHROPIC_API_KEY"))
     if not use_llm:
         return _offline_annotation(turns)
     return _annotate_with_claude(turns, model)
@@ -54,7 +54,10 @@ def _annotate_with_claude(turns: list[dict[str, Any]], model: str | None) -> dic
     except ImportError as exc:
         raise RuntimeError("Install anthropic with: pip install -e .") from exc
 
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    api_key = ensure_provider_key("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set and Keychain service Anthropic:voice is missing")
+    client = Anthropic(api_key=api_key)
     response = client.messages.create(
         model=model or os.getenv("VE_ANNOTATOR_MODEL", "claude-sonnet-4-6"),
         max_tokens=1024,
