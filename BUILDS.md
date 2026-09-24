@@ -1,10 +1,10 @@
 ---
 status: "paused"
 current_state: "The completed early-prediction experiment now includes the later full-conversation result and its limits. Copilot Lab continues the investigation idea separately."
-next_action: "Review the existing README before publication or separate app integration."
+next_action: "none"
 things_to_know:
   - "The revised README is the current scope and evidence statement."
-  - "Changes are saved locally; publication remains a separate approval."
+  - "Owner-reviewed README checked against saved results; publication approved. No further experiment work is planned."
 what_it_is: "Original realtime support copilot experiment that failed its broad root-cause accuracy gate."
 read_next:
   - "README.md"
@@ -16,7 +16,7 @@ agent_notes:
   - "Support-call-generator is a dependency, not something to reimplement."
   - "Use generated-card redaction for legacy secret-like notes."
 safe_first_action: "Read FINDINGS_phase1.md before proposing any continuation or narrowing."
-updated_at: "2026-09-17"
+updated_at: "2026-09-24"
 updated_by: "codex"
 ---
 
